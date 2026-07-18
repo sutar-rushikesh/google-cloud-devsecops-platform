@@ -1,0 +1,172 @@
+pipeline {
+    agent any
+
+    environment {
+        GOOGLE_CLOUD_PROJECT = "project-fdafd956-f938-4094-a6d"
+        IMAGE_TAG = "1.0.${currentBuild.number}"                             // Docker image versioning
+        SCANNER_HOME = tool 'sonar-scanner'                                  // SonarQube scanner home
+    }
+
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/sutar-rushikesh/gcp-test-repo.git'
+            }
+        }
+
+        stage('Configure Google Cloud') {
+            steps {
+                sh """
+                    gcloud auth list
+            gcloud config set project project-fdafd956-f938-4094-a6d
+            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                """
+            }
+        }
+
+        stage('Scan Filesystem using Trivy') {
+            steps {
+                sh "trivy fs ."
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh """
+                    $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=app \
+                    -Dsonar.projectKey=app
+                    """
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                }
+            }
+        }
+
+//        stage('OWASP Dependency-Check Scan') {
+//            steps {
+//                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+//                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+ //           }
+ //       }
+
+        stage('Configure Artifact Registry') {
+            steps {
+                    sh """
+                    gcloud auth list
+            gcloud config set project $GOOGLE_CLOUD_PROJECT
+            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                    """
+                }
+            }
+        
+
+       stage('Build Docker Image') {
+           steps {
+                    sh '''
+                     docker build -t hello:latest .
+                    '''
+           }
+       }
+
+        stage('Tag & Push Docker Image to GCP Artifact Registry') {
+            steps {
+                   sh '''
+            docker tag hello:latest us-central1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/docker-repo/hello:$IMAGE_TAG
+            docker push us-central1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/docker-repo/hello:$IMAGE_TAG
+
+            docker tag hello:latest us-central1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/docker-repo/hello:latest
+            docker push us-central1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/docker-repo/hello:latest
+                    '''
+                }
+            }
+        
+
+        stage('Scan Latest Docker Image using Trivy') {
+            steps {
+                sh "trivy image us-central1-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/docker-repo/hello:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Clean Workspace for CD Repo') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout K8s YAML Repo') {
+            steps {
+                git branch: 'main', credentialsId: 'github-token', url: 'https://github.com/sutar-rushikesh/gcp-test-k8s.git'
+            }
+        }
+
+        stage('Update helm values.yaml with New Docker Image') {
+
+    environment {
+        GIT_REPO_NAME = "gcp-test-k8s"
+        GIT_USER_NAME = "sutar-rushikesh"
+    }
+
+    steps {
+
+        withCredentials([
+            usernamePassword(
+                credentialsId: 'github-token',
+                usernameVariable: 'GITHUB_USER',
+                passwordVariable: 'GITHUB_TOKEN'
+            )
+        ]) {
+
+            sh """
+            set -e
+
+            git config user.email "rushikeshmsutar@example.com"
+            git config user.name "${GIT_USER_NAME}"
+
+            echo "===== BEFORE ====="
+            cat helm/values.yaml
+
+            sed -i "s|image: .*|image: us-central1-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/docker-repo/hello:${IMAGE_TAG}|g" helm/values.yaml
+
+            echo "===== AFTER ====="
+            cat helm/values.yaml
+
+            if git diff --quiet; then
+                echo "No changes detected."
+                exit 0
+            fi
+
+            git add helm/values.yaml
+
+            git commit -m "Updated image tag to ${IMAGE_TAG}"
+
+            git remote set-url origin https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git
+
+            git push origin HEAD:main
+            """
+             }
+         }
+      }
+        stage('Updated Image tag for CD') {
+            steps {
+                echo 'Successfully updated Docker Image tag for Continuous Deployment'
+            }
+        }
+    
+   }
+
+
+    
+}
