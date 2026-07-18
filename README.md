@@ -30,6 +30,8 @@ The project starts from infrastructure provisioning and continues through secure
 
 The objective of this project is to simulate a real-world enterprise DevSecOps workflow used by modern software organizations.
 
+<img width="1983" height="793" alt="Futuristic DevSecOps platform on Google Cloud" src="https://github.com/user-attachments/assets/89231019-bb3d-42bb-b3dc-b90b43ab879d" />
+
 ---
 
 # 🎯 Project Objectives
