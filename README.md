@@ -32,6 +32,9 @@ The objective of this project is to simulate a real-world enterprise DevSecOps w
 
 <img width="1983" height="793" alt="Futuristic DevSecOps platform on Google Cloud" src="https://github.com/user-attachments/assets/89231019-bb3d-42bb-b3dc-b90b43ab879d" />
 
+
+<img width="1915" height="756" alt="Screenshot 2026-07-20 174606" src="https://github.com/user-attachments/assets/d35070df-8651-420c-b7f3-3d3f9a4320fc" />
+
 ---
 
 # 🎯 Project Objectives
